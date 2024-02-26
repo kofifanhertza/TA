@@ -14,6 +14,10 @@ from utils.general import check_img_size, check_requirements, check_imshow, non_
 from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
 
+from datetime import datetime
+
+
+
 
 def detect(save_img=False):
     source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
@@ -67,7 +71,17 @@ def detect(save_img=False):
     old_img_b = 1
 
     t0 = time.time()
+    now = datetime.now()
+
+    prev_counter1 = 0
+    prev_counter2 = 0
+
+    dt_string1 = now.strftime("%H:%M:%S")
+    dt_string2 = now.strftime("%H:%M:%S")
+
     for path, img, im0s, vid_cap in dataset:
+
+
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -96,8 +110,12 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
+
+        
         # Process detections
         for i, det in enumerate(pred):  # detections per image
+            counter1 = 0
+            counter2 = 0        
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
             else:
@@ -107,6 +125,10 @@ def detect(save_img=False):
             save_path = str(save_dir / p.name)  # img.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.9*im0.shape[0]))
+            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.9*im0.shape[0]))
+
+
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -126,7 +148,64 @@ def detect(save_img=False):
 
                     if save_img or view_img:  # Add bbox to image
                         label = f'{names[int(cls)]} {conf:.2f}'
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1)
+
+                        y_middle= (int(xyxy[3])-int(xyxy[1]))/2 + int(xyxy[1])
+                        x_middle= (int(xyxy[2])-int(xyxy[0]))/2 + int(xyxy[0])
+
+
+                        if ((roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2)):
+                            counter1  += 1
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1 )
+
+                        elif ((roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2)):
+                            counter2  += 1
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1 )
+
+            if prev_counter1 != counter1 :
+                now = datetime.now()
+                dt_string1 = now.strftime("%H:%M:%S")
+                # if (prev_counter1 < counter1):
+                #     cv2.putText(im0, "ADD", (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                # elif (prev_counter1 > counter1):
+                #     cv2.putText(im0, "REMOVE", (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+
+                prev_counter1 = counter1
+                #cv2.putText(im0, dt_string, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                #cv2.putText(im0, str(prev_counter1), (700,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+
+                        
+                        
+            if prev_counter2 != counter2 : 
+                now = datetime.now()
+                dt_string2 = now.strftime("%H:%M:%S")
+
+                # if (prev_counter2 < counter2):
+                #     cv2.putText(im0, "ADD", (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                # elif (prev_counter2 > counter2):
+                #     cv2.putText(im0, "REMOVE", (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                prev_counter2 = counter2
+
+
+                #cv2.putText(im0, dt_string, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                #cv2.putText(im0, str(prev_counter2), (700,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+                        
+
+
+
+            text1 = f"Head detected Left ROI : {counter1}"        
+            text2 = f"Head detected Right ROI : {counter2}" 
+
+            print(im0.shape)
+
+            cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,0,0), 2)
+            cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (0,0,0), 2)
+
+            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+
+            cv2.putText(im0, dt_string1, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+            cv2.putText(im0, dt_string2, (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
+
 
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
