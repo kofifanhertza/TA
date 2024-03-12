@@ -1,33 +1,93 @@
-import argparse
-import time
-from pathlib import Path
-
+import os
 import cv2
+import time
 import torch
-import torch.backends.cudnn as cudnn
+import argparse
+from pathlib import Path
 from numpy import random
+from random import randint
+import torch.backends.cudnn as cudnn
 
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
-from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
-    scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
+from utils.general import check_img_size, check_requirements, \
+                check_imshow, non_max_suppression, apply_classifier, \
+                scale_coords, xyxy2xywh, strip_optimizer, set_logging, \
+                increment_path
 from utils.plots import plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
+from utils.torch_utils import select_device, load_classifier, \
+                time_synchronized, TracedModel
+# from utils.download_weights import download
 
-from datetime import datetime
+#For SORT tracking
+import skimage
+from sort import *
 
-
+#............................... Bounding Boxes Drawing ............................
+"""Function to Draw Bounding boxes"""
+def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None,offset=(0, 0)):
+    for i, box in enumerate(bbox):
+        x1, y1, x2, y2 = [int(i) for i in box]
+        x1 += offset[0]
+        x2 += offset[0]
+        y1 += offset[1]
+        y2 += offset[1]
+        cat = int(categories[i]) if categories is not None else 0
+        id = int(identities[i]) if identities is not None else 0
+        data = (int((box[0]+box[2])/2),(int((box[1]+box[3])/2)))
+        label = str(id) + ":"+ names[cat]
+        (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,20), 2)
+        cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), (255,144,30), -1)
+        cv2.putText(img, label, (x1, y1 - 5),cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.6, [255, 255, 255], 1)
+        # cv2.circle(img, data, 6, color,-1)   #centroid of box
+        txt_str = ""
+        if save_with_object_id:
+            txt_str += "%i %i %f %f %f %f %f %f" % (
+                id, cat, int(box[0])/img.shape[1], int(box[1])/img.shape[0] , int(box[2])/img.shape[1], int(box[3])/img.shape[0] ,int(box[0] + (box[2] * 0.5))/img.shape[1] ,
+                int(box[1] + (
+                    box[3]* 0.5))/img.shape[0])
+            txt_str += "\n"
+            with open(path + '.txt', 'a') as f:
+                f.write(txt_str)
+    return img
+#..............................................................................
 
 
 def detect(save_img=False):
-    source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
+    source, weights, view_img, save_txt, imgsz, trace, colored_trk, save_bbox_dim, save_with_object_id= opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace, opt.colored_trk, opt.save_bbox_dim, opt.save_with_object_id
     save_img = not opt.nosave and not source.endswith('.txt')  # save inference images
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
+
+    #.... Initialize SORT .... 
+    #......................... 
+    sort_max_age = 5 
+    sort_min_hits = 2
+    sort_iou_thresh = 0.2
+    sort_tracker = Sort(max_age=sort_max_age,
+                       min_hits=sort_min_hits,
+                       iou_threshold=sort_iou_thresh)
+    #......................... 
+    
+    
+    #........Rand Color for every trk.......
+    rand_color_list = []
+    amount_rand_color_prime = 5003 # prime number
+    for i in range(0,amount_rand_color_prime):
+        r = randint(0, 255)
+        g = randint(0, 255)
+        b = randint(0, 255)
+        rand_color = (r, g, b)
+        rand_color_list.append(rand_color)
+    #......................................
+   
+
     # Directories
     save_dir = Path(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))  # increment run
-    (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    (save_dir / 'labels' if save_txt or save_with_object_id else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
     # Initialize
     set_logging()
@@ -71,17 +131,9 @@ def detect(save_img=False):
     old_img_b = 1
 
     t0 = time.time()
-    now = datetime.now()
 
-    prev_counter1 = 0
-    prev_counter2 = 0
-
-    dt_string1 = now.strftime("%H:%M:%S")
-    dt_string2 = now.strftime("%H:%M:%S")
-
+    
     for path, img, im0s, vid_cap in dataset:
-
-
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -98,8 +150,7 @@ def detect(save_img=False):
 
         # Inference
         t1 = time_synchronized()
-        with torch.no_grad():   # Calculating gradients would cause a GPU memory leak
-            pred = model(img, augment=opt.augment)[0]
+        pred = model(img, augment=opt.augment)[0]
         t2 = time_synchronized()
 
         # Apply NMS
@@ -110,12 +161,8 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
-
-        
         # Process detections
         for i, det in enumerate(pred):  # detections per image
-            counter1 = 0
-            counter2 = 0        
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
             else:
@@ -125,10 +172,6 @@ def detect(save_img=False):
             save_path = str(save_dir / p.name)  # img.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.9*im0.shape[0]))
-            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.9*im0.shape[0]))
-
-
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -138,82 +181,55 @@ def detect(save_img=False):
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if opt.save_conf else (cls, *xywh)  # label format
-                        with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                #..................USE TRACK FUNCTION....................
+                #pass an empty array to sort
+                dets_to_sort = np.empty((0,6))
+                
+                # NOTE: We send in detected object class too
+                for x1,y1,x2,y2,conf,detclass in det.cpu().detach().numpy():
+                    dets_to_sort = np.vstack((dets_to_sort, 
+                                np.array([x1, y1, x2, y2, conf, detclass])))
+                
+                # Run SORT
+                tracked_dets = sort_tracker.update(dets_to_sort)
+                tracks =sort_tracker.getTrackers()
 
-                    if save_img or view_img:  # Add bbox to image
-                        label = f'{names[int(cls)]} {conf:.2f}'
+                txt_str = ""
 
-                        y_middle= (int(xyxy[3])-int(xyxy[1]))/2 + int(xyxy[1])
-                        x_middle= (int(xyxy[2])-int(xyxy[0]))/2 + int(xyxy[0])
+                #loop over tracks
+                for track in tracks:
+                    
+                    if save_txt and not save_with_object_id:
+                        # Normalize coordinates
+                        txt_str += "%i %i %f %f" % (track.id, track.detclass, track.centroidarr[-1][0] / im0.shape[1], track.centroidarr[-1][1] / im0.shape[0])
+                        if save_bbox_dim:
+                            txt_str += " %f %f" % (np.abs(track.bbox_history[-1][0] - track.bbox_history[-1][2]) / im0.shape[0], np.abs(track.bbox_history[-1][1] - track.bbox_history[-1][3]) / im0.shape[1])
+                        txt_str += "\n"
+                
+                if save_txt and not save_with_object_id:
+                    with open(txt_path + '.txt', 'a') as f:
+                        f.write(txt_str)
 
-
-                        if ((roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2)):
-                            counter1  += 1
-                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1 )
-
-                        elif ((roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2)):
-                            counter2  += 1
-                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=1 )
-
-            if prev_counter1 != counter1 :
-                now = datetime.now()
-                dt_string1 = now.strftime("%H:%M:%S")
-                # if (prev_counter1 < counter1):
-                #     cv2.putText(im0, "ADD", (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                # elif (prev_counter1 > counter1):
-                #     cv2.putText(im0, "REMOVE", (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-
-                prev_counter1 = counter1
-                #cv2.putText(im0, dt_string, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                #cv2.putText(im0, str(prev_counter1), (700,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-
-                        
-                        
-            if prev_counter2 != counter2 : 
-                now = datetime.now()
-                dt_string2 = now.strftime("%H:%M:%S")
-
-                # if (prev_counter2 < counter2):
-                #     cv2.putText(im0, "ADD", (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                # elif (prev_counter2 > counter2):
-                #     cv2.putText(im0, "REMOVE", (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                prev_counter2 = counter2
-
-
-                #cv2.putText(im0, dt_string, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                #cv2.putText(im0, str(prev_counter2), (700,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-                        
-
-
-
-            text1 = f"Head detected Left ROI : {counter1}"        
-            text2 = f"Head detected Right ROI : {counter2}" 
-
-            print(im0.shape)
-
-            cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,0,0), 2)
-            cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (0,0,0), 2)
-
-            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)    
-            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-
-            cv2.putText(im0, dt_string1, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-            cv2.putText(im0, dt_string2, (500,int(im0.shape[0]*0.04)+35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0) , 2, cv2.LINE_AA)
-
-
+                # draw boxes for visualization
+                if len(tracked_dets)>0:
+                    bbox_xyxy = tracked_dets[:,:4]
+                    identities = tracked_dets[:, 8]
+                    categories = tracked_dets[:, 4]
+                    draw_boxes(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path)
+            else: #SORT should be updated even with no detections
+                tracked_dets = sort_tracker.update()
+            #........................................................
+            
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
-
+            
+        
             # Stream results
             if view_img:
                 cv2.imshow(str(p), im0)
-                cv2.waitKey(1)  # 1 millisecond
+                if cv2.waitKey(1) == ord('q'):  # q to quit
+                  cv2.destroyAllWindows()
+                  raise StopIteration
 
             # Save results (image with detections)
             if save_img:
@@ -235,7 +251,7 @@ def detect(save_img=False):
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
 
-    if save_txt or save_img:
+    if save_txt or save_img or save_with_object_id:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
         #print(f"Results saved to {save_dir}{s}")
 
@@ -245,6 +261,8 @@ def detect(save_img=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
+    parser.add_argument('--download', action='store_true', help='download model weights automatically')
+    parser.add_argument('--no-download', dest='download', action='store_false',help='not download model weights if already exist')
     parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
@@ -259,12 +277,20 @@ if __name__ == '__main__':
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--project', default='runs/detect', help='save results to project/name')
-    parser.add_argument('--name', default='exp', help='save results to project/name')
+    parser.add_argument('--name', default='object_tracking', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--no-trace', action='store_true', help='don`t trace model')
+    parser.add_argument('--colored-trk', action='store_true', help='assign different color to every track')
+    parser.add_argument('--save-bbox-dim', action='store_true', help='save bounding box dimensions with --save-txt tracks')
+    parser.add_argument('--save-with-object-id', action='store_true', help='save results with object id to *.txt')
+
+    parser.set_defaults(download=True)
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
+    if opt.download and not os.path.exists(''.join(opt.weights)):
+        print('Model weights not found. Attempting to download now...')
+        download('./')
 
     with torch.no_grad():
         if opt.update:  # update all models (to fix SourceChangeWarning)
