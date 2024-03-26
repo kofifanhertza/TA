@@ -28,8 +28,6 @@ from datetime import datetime
 
 tracked_objects = {}
 
-
-
 def update_objects(detected_objects, current_time):
     global tracked_objects
     for obj in detected_objects:
@@ -57,88 +55,62 @@ def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.95*im0.shape[0]))
-    roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.95*im0.shape[0]))
-    # roi3_x1, roi3_y1, roi3_x2, roi3_y2 = (int(0.620*im0.shape[1]),int(0.445*im0.shape[0]),int(0.806*im0.shape[1]),int(0.621*im0.shape[0]))
-    # roi4_x1, roi4_y1, roi4_x2, roi4_y2 = (int(0.077*im0.shape[1]),int(0.565*im0.shape[0]),int(0.404*im0.shape[1]),int(im0.shape[0]))
-    # roi5_x1, roi5_y1, roi5_x2, roi5_y2 = (int(0.521*im0.shape[1]),int(0.621*im0.shape[0]),int(0.758*im0.shape[1]),int(im0.shape[0]))
-    # roi6_x1, roi6_y1, roi6_x2, roi6_y2 = (int(0.758*im0.shape[1]),int(0.621*im0.shape[0]),int(im0.shape[1]),int(im0.shape[0]))
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.124*im0.shape[1]),int(0.301*im0.shape[0]),int(0.310*im0.shape[1]),int(0.565*im0.shape[0]))
+    roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.395*im0.shape[1]),int(0.301*im0.shape[0]),int(0.620*im0.shape[1]),int(0.621*im0.shape[0]))
+    roi3_x1, roi3_y1, roi3_x2, roi3_y2 = (int(0.620*im0.shape[1]),int(0.445*im0.shape[0]),int(0.806*im0.shape[1]),int(0.621*im0.shape[0]))
+    roi4_x1, roi4_y1, roi4_x2, roi4_y2 = (int(0.077*im0.shape[1]),int(0.565*im0.shape[0]),int(0.404*im0.shape[1]),int(im0.shape[0]))
+    roi5_x1, roi5_y1, roi5_x2, roi5_y2 = (int(0.521*im0.shape[1]),int(0.621*im0.shape[0]),int(0.758*im0.shape[1]),int(im0.shape[0]))
+    roi6_x1, roi6_y1, roi6_x2, roi6_y2 = (int(0.758*im0.shape[1]),int(0.621*im0.shape[0]),int(im0.shape[1]),int(im0.shape[0]))
 
 
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
-        return  "A"
+        return "A"
         
     elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
         return "B"
         
-    # elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
-    #     return "C"
+    elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
+        return "C"
         
-    # elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
-    #     return "D"
+    elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
+        return "D"
     
-    # elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
-    #     return "E"
+    elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
+        return "E"
         
-    # elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
-    #     return "F"
+    elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
+        return "F"
     else :
         return None
-        
 
-def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None):
+
+def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None, roi=None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
+        x_center = (x1 + x2) // 2
+        y_center = (y1 + y2) // 2
+
         # Check if the center of the box is within any of the ROIs
-        roi_position = determine_roi(x1,y1,x2,y2,img)
+        in_roi = False
+        if roi is not None:
+            for roi_box in roi:
+                roi_x1, roi_y1, roi_x2, roi_y2 = roi_box
+                if roi_x1 <= x_center <= roi_x2 and roi_y1 <= y_center <= roi_y2:
+                    in_roi = True
+                    break
+
         # Only proceed to draw the box if it's within an ROI
-        if roi_position is not None:
+        if in_roi:
             cat = int(categories[i]) if categories is not None else 0
             id = int(identities[i]) if identities is not None else 0
-            id_updated = False
-
-            # Check if the id is already in detected_object and update it
-            for obj in detected_object:
-                time_diff = 0
-                if obj['id'] == id:
-                    # Update the object's details
-                    obj['x1'] = x1
-                    obj['y1'] = y1
-                    obj['x2'] = x2
-                    obj['y2'] = y2
-                    roi_position = roi_position
-                    obj['roi_position'] = roi_position
-
-                    # if 'last_updated' not in obj:
-                    #     obj['last_updated'] = obj['first_detected']
-
-                    # # Calculate the time difference in seconds
-                    current_time = datetime.now()
-                    time_diff = (current_time - obj['first_detected']).total_seconds()
-                    
-
-                    id_updated = True
-                    # print(f"ID {id} updated.")
-                    break  # Exit the loop since we've updated the id
-
-            if not id_updated:
-            # If the id is not found, append the new object with the first_detected time
-                time_diff = 0
-                detected_object.append({
-                    "id": id,
-                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                    "roi_position": roi_position,
-                    "first_detected": datetime.now(),  # Store the initial detection time
-                    "time_in_roi": time_diff  # Initialize the time in ROI as 0 since it's just detected
-                })
+            label = f"{id}:{names[cat]}"
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
             
-            label = f"{id}:{names[cat],{time_diff}}"
-            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 1)
             cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 20), 2)
             cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), (255, 144, 30), -1)
             cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
-                        1, [255, 255, 255], 1)
+                        0.6, [255, 255, 255], 1)
 
             if save_with_object_id:
                 txt_str = f"{id} {cat} {x1/img.shape[1]:.6f} {y1/img.shape[0]:.6f} {x2/img.shape[1]:.6f} {y2/img.shape[0]:.6f} {(x1 + (x2 - x1) / 2)/img.shape[1]:.6f} {(y1 + (y2 - y1) / 2)/img.shape[0]:.6f}\n"
@@ -222,17 +194,28 @@ def detect(save_img=False):
     t0 = time.time()
     now = datetime.now()
 
-    
-
     prev_counter1 = 0
     prev_counter2 = 0
+    prev_counter3 = 0
+    prev_counter4 = 0
+    prev_counter5 = 0
+    prev_counter6 = 0
 
     dt_string1 = now.strftime("%H:%M:%S")
     dt_string2 = now.strftime("%H:%M:%S")
-    
+    dt_string3 = now.strftime("%H:%M:%S")
+    dt_string4 = now.strftime("%H:%M:%S")
+    dt_string5 = now.strftime("%H:%M:%S")
+    dt_string6 = now.strftime("%H:%M:%S")
+
 
     current_time = now.strftime("%H:%M:%S")
     detected_objects = []
+
+    
+
+
+
     for path, img, im0s, vid_cap in dataset:
 
 
@@ -268,8 +251,7 @@ def detect(save_img=False):
         
         # Process detections
         for i, det in enumerate(pred):  # detections per image
-            counter1, counter2  = 0, 0 
-            roi_counts = {'A': 0, 'B': 0, 'None': 0}
+            counter1, counter2, counter3, counter4, counter5, counter6 = 0, 0, 0, 0, 0, 0   
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
             else:
@@ -283,8 +265,14 @@ def detect(save_img=False):
 
 
             print(frame)
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.95*im0.shape[0]))
-            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.95*im0.shape[0]))
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.124*im0.shape[1]),int(0.301*im0.shape[0]),int(0.310*im0.shape[1]),int(0.565*im0.shape[0]))
+            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.395*im0.shape[1]),int(0.301*im0.shape[0]),int(0.620*im0.shape[1]),int(0.621*im0.shape[0]))
+            roi3_x1, roi3_y1, roi3_x2, roi3_y2 = (int(0.620*im0.shape[1]),int(0.445*im0.shape[0]),int(0.806*im0.shape[1]),int(0.621*im0.shape[0]))
+            roi4_x1, roi4_y1, roi4_x2, roi4_y2 = (int(0.077*im0.shape[1]),int(0.565*im0.shape[0]),int(0.404*im0.shape[1]),int(im0.shape[0]))
+            roi5_x1, roi5_y1, roi5_x2, roi5_y2 = (int(0.521*im0.shape[1]),int(0.621*im0.shape[0]),int(0.758*im0.shape[1]),int(im0.shape[0]))
+            roi6_x1, roi6_y1, roi6_x2, roi6_y2 = (int(0.758*im0.shape[1]),int(0.621*im0.shape[0]),int(im0.shape[1]),int(im0.shape[0]))
+
+            roi = [(int(0.124*im0.shape[1]),int(0.301*im0.shape[0]),int(0.310*im0.shape[1]),int(0.565*im0.shape[0])),(int(0.395*im0.shape[1]),int(0.301*im0.shape[0]),int(0.620*im0.shape[1]),int(0.621*im0.shape[0])), (int(0.620*im0.shape[1]),int(0.445*im0.shape[0]),int(0.806*im0.shape[1]),int(0.621*im0.shape[0])), (int(0.077*im0.shape[1]),int(0.565*im0.shape[0]),int(0.404*im0.shape[1]),int(im0.shape[0])), (int(0.521*im0.shape[1]),int(0.621*im0.shape[0]),int(0.758*im0.shape[1]),int(im0.shape[0])), (int(0.758*im0.shape[1]),int(0.621*im0.shape[0]),int(im0.shape[1]),int(im0.shape[0]))]
 
 
             if len(det):
@@ -328,56 +316,69 @@ def detect(save_img=False):
                 # draw boxes for visualization
                         
                 if len(tracked_dets) > 0:
+                    
 
-                    bbox_xyxy = tracked_dets[:, :4]
-                    identities = tracked_dets[:, 8]
-                    categories = tracked_dets[:, 4]
+                    for i, det in enumerate(pred):  # detections per image
+                        if len(det):
+                            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                            # Process each detection
+                            for *xyxy, conf, cls in det:
+                                x1, y1, x2, y2 = [int(coord) for coord in xyxy]
+                                obj_id = int(cls)  # example object ID, replace with actual ID if available
+                                roi_position = determine_roi(x1, y1, x2, y2,im0)  # You need to implement this based on your ROIs
+                                detected_objects.append({
+                                    "id": obj_id,
+                                    "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                                    "roi_position": roi_position
+                                })
+                        else:
+                            # No detections in this frame
+                            pass
 
-                    for i, box in enumerate(bbox_xyxy):
-                        x1, y1, x2, y2 = [int(i) for i in box]
-                        roi = determine_roi(x1,y1,x2,y2,im0)
+                    # Update global tracking information
+                    update_objects(detected_objects, current_time)
 
-                        x1, y1, x2, y2 = [int(i) for i in box]
-                        y_middle = ((y2 - y1) / 2) + y1
-                        x_middle = ((x2 - x1) / 2) + x1
+                    # Draw bounding boxes based on tracked objects
+                    for obj_id, obj_info in tracked_objects.items():
+                        bbox = obj_info["last_position"]
+                        x1, y1, x2, y2 = bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']
+                        label = f"{obj_id}: {obj_info['roi_position']}"
+                        cv2.rectangle(im0, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.putText(im0, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-                        # Check which ROI the detection falls into
-                        if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
-                            counter1 += 1
+
+                    # # Loop through each detection and draw the boxes
+                    # for i, box in enumerate(bbox_xyxy):
+                    #     x1, y1, x2, y2 = [int(i) for i in box]
+                    #     y_middle = ((y2 - y1) / 2) + y1
+                    #     x_middle = ((x2 - x1) / 2) + x1
+
+                    #     # Check which ROI the detection falls into
+                    #     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
+                    #         counter1 += 1
                             
-                        elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
-                            counter2 += 1
+                    #     elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
+                    #         counter2 += 1
                             
-                        # elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
-                        #     counter3  += 1
+                    #     elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
+                    #         counter3  += 1
                             
-                        # elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
-                        #     counter4  += 1
+                    #     elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
+                    #         counter4  += 1
                            
-                        # elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
-                        #     counter5  += 1
+                    #     elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
+                    #         counter5  += 1
                             
-                        # elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
-                        #     counter6  += 1
+                    #     elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
+                    #         counter6  += 1
                             
 
-                        draw_boxes(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path, detected_objects)
-        
+                    #     draw_boxes(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path, roi)
+                        
             else: #SORT should be updated even with no detections
                 tracked_dets = sort_tracker.update()
             #........................................................
                 
-            print("--------------------------")
-            
-            
-            for obj in detected_objects:
-                roi_position = obj['roi_position']
-                if roi_position is None:  # Handle cases where roi_position is None
-                    roi_counts['None'] += 1
-                else:
-                    roi_counts[roi_position] += 1
-
-            print(detected_objects)
 
             if prev_counter1 != counter1 :
                 now = datetime.now()
@@ -389,52 +390,72 @@ def detect(save_img=False):
                 dt_string2 = now.strftime("%H:%M:%S")
                 prev_counter2 = counter2
 
+            if prev_counter3 != counter3 : 
+                now = datetime.now()
+                dt_string3 = now.strftime("%H:%M:%S")
+                prev_counter3 = counter3
 
-            text_size = 2
-            offset_y = 75
-            text_bold = 3
+            if prev_counter4 != counter4 : 
+                now = datetime.now()
+                dt_string4 = now.strftime("%H:%M:%S")
+                prev_counter4 = counter4
+
+            if prev_counter5 != counter5 : 
+                now = datetime.now()
+                dt_string5 = now.strftime("%H:%M:%S")
+                prev_counter5 = counter5
+
+            if prev_counter6 != counter6 : 
+                now = datetime.now()
+                dt_string6 = now.strftime("%H:%M:%S")
+                prev_counter6 = counter6
+
+            print("Object")
+            print(detected_objects)
+
+
 
             text1 = f"Head BBOX A : {counter1}"     
             level_of_service_1 = density_calc(counter1, 5)
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
-            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS :" + level_of_service_1, (1200,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
+            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_1, (500,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string1, (300,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
 
             text2 = f"Head BBOX B : {counter2}"     
             level_of_service_2 = density_calc(counter2, 5)
             cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (0,255,0), 3)
-            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS :" + level_of_service_2, (1200,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, dt_string2, (600,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
+            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04) + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_2, (500,int(im0.shape[0]*0.04) + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string2, (300,int(im0.shape[0]*0.04) + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
 
-            # text3 = f"Head BBOX C : {roi_counts['C']}"     
-            # level_of_service_3 = density_calc(roi_counts['C'], 5)
-            # cv2.rectangle(im0, (roi3_x1,roi3_y1), (roi3_x2,roi3_y2), (0,255,0), 3)
-            # cv2.putText(im0, text3, (0,int(im0.shape[0]*0.04) +2*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_3, (500,int(im0.shape[0]*0.04)+2*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string3, (300,int(im0.shape[0]*0.04)+60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
+            text3 = f"Head BBOX C : {counter3}"     
+            level_of_service_3 = density_calc(counter3, 5)
+            cv2.rectangle(im0, (roi3_x1,roi3_y1), (roi3_x2,roi3_y2), (0,255,0), 3)
+            cv2.putText(im0, text3, (0,int(im0.shape[0]*0.04) +60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_3, (500,int(im0.shape[0]*0.04)+60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string3, (300,int(im0.shape[0]*0.04)+60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
 
-            # text4 = f"Head BBOX D : {roi_counts['D']}"     
-            # level_of_service_4 = density_calc(roi_counts['D'], 5)
-            # cv2.rectangle(im0, (roi4_x1,roi4_y1), (roi4_x2,roi4_y2), (0,255,0), 3)
-            # cv2.putText(im0, text4, (0,int(im0.shape[0]*0.04)+3*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_4, (500,int(im0.shape[0]*0.04)+3*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string4, (300,int(im0.shape[0]*0.04)+90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
+            text4 = f"Head BBOX D : {counter4}"     
+            level_of_service_4 = density_calc(counter4, 5)
+            cv2.rectangle(im0, (roi4_x1,roi4_y1), (roi4_x2,roi4_y2), (0,255,0), 3)
+            cv2.putText(im0, text4, (0,int(im0.shape[0]*0.04)+90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_4, (500,int(im0.shape[0]*0.04)+90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string4, (300,int(im0.shape[0]*0.04)+90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
 
-            # text5 = f"Head BBOX E : {roi_counts['E']}"     
-            # level_of_service_5 = density_calc(roi_counts['E'], 5)
-            # cv2.rectangle(im0, (roi5_x1,roi5_y1), (roi5_x2,roi5_y2), (0,255,0), 3)
-            # cv2.putText(im0, text5, (0,int(im0.shape[0]*0.04)+4*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_5, (500,int(im0.shape[0]*0.04)+4*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string5, (300,int(im0.shape[0]*0.04)+120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
+            text5 = f"Head BBOX E : {counter5}"     
+            level_of_service_5 = density_calc(counter5, 5)
+            cv2.rectangle(im0, (roi5_x1,roi5_y1), (roi5_x2,roi5_y2), (0,255,0), 3)
+            cv2.putText(im0, text5, (0,int(im0.shape[0]*0.04)+120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_5, (500,int(im0.shape[0]*0.04)+120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string5, (300,int(im0.shape[0]*0.04)+120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
 
-            # text6 = f"Head BBOX F : {roi_counts['F']}"     
-            # level_of_service_6 = density_calc(roi_counts['F'], 5)
-            # cv2.rectangle(im0, (roi6_x1,roi6_y1), (roi6_x2,roi6_y2), (0,255,0), 3)
-            # cv2.putText(im0, text6, (0,int(im0.shape[0]*0.04)+5*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_6, (500,int(im0.shape[0]*0.04)+5*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string6, (300,int(im0.shape[0]*0.04)+150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            text6 = f"Head BBOX F : {counter6}"     
+            level_of_service_6 = density_calc(counter6, 5)
+            cv2.rectangle(im0, (roi6_x1,roi6_y1), (roi6_x2,roi6_y2), (0,255,0), 3)
+            cv2.putText(im0, text6, (0,int(im0.shape[0]*0.04)+150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS :" + level_of_service_6, (500,int(im0.shape[0]*0.04)+150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            cv2.putText(im0, dt_string6, (300,int(im0.shape[0]*0.04)+150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
             
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
