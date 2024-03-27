@@ -28,66 +28,19 @@ from datetime import datetime
 
 tracked_objects = {}
 
-
-
-def update_objects(detected_objects, current_time):
-    global tracked_objects
-    for obj in detected_objects:
-        obj_id = obj['id']
-        bbox = {'x1': obj['x1'], 'y1': obj['y1'], 'x2': obj['x2'], 'y2': obj['y2']}
-        roi = obj['roi_position']
-        if obj_id not in tracked_objects:
-            tracked_objects[obj_id] = {
-                "last_position": bbox,
-                "roi_position": roi,
-                "timestamp": current_time,
-                "duration": 0
-            }
-        else:
-            last_obj = tracked_objects[obj_id]
-            last_obj["last_position"] = bbox
-            
-            if last_obj["roi_position"] != roi:
-                last_obj["roi_position"] = roi
-                last_obj["timestamp"] = current_time.strftime("%H:%M:%S")
-                last_obj["duration"] = 0
-            
-
 def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.95*im0.shape[0]))
-    roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.95*im0.shape[0]))
-    # roi3_x1, roi3_y1, roi3_x2, roi3_y2 = (int(0.620*im0.shape[1]),int(0.445*im0.shape[0]),int(0.806*im0.shape[1]),int(0.621*im0.shape[0]))
-    # roi4_x1, roi4_y1, roi4_x2, roi4_y2 = (int(0.077*im0.shape[1]),int(0.565*im0.shape[0]),int(0.404*im0.shape[1]),int(im0.shape[0]))
-    # roi5_x1, roi5_y1, roi5_x2, roi5_y2 = (int(0.521*im0.shape[1]),int(0.621*im0.shape[0]),int(0.758*im0.shape[1]),int(im0.shape[0]))
-    # roi6_x1, roi6_y1, roi6_x2, roi6_y2 = (int(0.758*im0.shape[1]),int(0.621*im0.shape[0]),int(im0.shape[1]),int(im0.shape[0]))
-
-
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.05*im0.shape[1]),int(0.15*im0.shape[0]),int(0.95*im0.shape[1]),int(0.85*im0.shape[0])
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
         return  "A"
-        
-    elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
-        return "B"
-        
-    # elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
-    #     return "C"
-        
-    # elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
-    #     return "D"
-    
-    # elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
-    #     return "E"
-        
-    # elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
-    #     return "F"
     else :
         return None
         
 
-def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None):
+def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         # Check if the center of the box is within any of the ROIs
@@ -97,27 +50,21 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_wit
             cat = int(categories[i]) if categories is not None else 0
             id = int(identities[i]) if identities is not None else 0
             id_updated = False
+            current_video_time = current_frame / frame_rate if current_frame is not None and frame_rate is not None else 0
 
             # Check if the id is already in detected_object and update it
             for obj in detected_object:
                 time_diff = 0
                 if obj['id'] == id:
-                    # Update the object's details
-                    obj['x1'] = x1
-                    obj['y1'] = y1
-                    obj['x2'] = x2
-                    obj['y2'] = y2
-                    roi_position = roi_position
-                    obj['roi_position'] = roi_position
-
-                    # if 'last_updated' not in obj:
-                    #     obj['last_updated'] = obj['first_detected']
-
-                    # # Calculate the time difference in seconds
-                    current_time = datetime.now()
-                    time_diff = (current_time - obj['first_detected']).total_seconds()
+                    # Calculate the time difference in seconds based on video time
+                    time_diff = current_video_time - obj['first_detected']
                     
-
+                    # Update the object's details
+                    obj.update({
+                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                        'roi_position': roi_position,
+                        "time_in_roi": time_diff
+                    })
                     id_updated = True
                     # print(f"ID {id} updated.")
                     break  # Exit the loop since we've updated the id
@@ -129,21 +76,32 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, save_wit
                     "id": id,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
                     "roi_position": roi_position,
-                    "first_detected": datetime.now(),  # Store the initial detection time
+                    "first_detected": current_video_time,  # Store the initial detection time
                     "time_in_roi": time_diff  # Initialize the time in ROI as 0 since it's just detected
                 })
             
-            label = f"{id}:{names[cat],{time_diff}}"
+            label = f"{id}; duration: {int(time_diff)} s"
             (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 1)
-            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 20), 2)
-            cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), (255, 144, 30), -1)
-            cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
-                        1, [255, 255, 255], 1)
+            
+            if time_diff > 0.5 :
+                if time_diff < 5 :
+                    box_color = (0, 255, 0)  # Color for the bounding box
+                    label_background_color = (0,255,0)
+                else :
+                    box_color = (0, 0, 255)  # Color for the bounding box           
+                    label_background_color = (0,0,255)
+            
+                text_color = (0, 0, 0)  # Color for the text
 
-            if save_with_object_id:
-                txt_str = f"{id} {cat} {x1/img.shape[1]:.6f} {y1/img.shape[0]:.6f} {x2/img.shape[1]:.6f} {y2/img.shape[0]:.6f} {(x1 + (x2 - x1) / 2)/img.shape[1]:.6f} {(y1 + (y2 - y1) / 2)/img.shape[0]:.6f}\n"
-                with open(path + '.txt', 'a') as f:
-                    f.write(txt_str)
+                cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
+                cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), label_background_color, -1)
+                cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
+                            1, text_color, 1)
+
+                if save_with_object_id:
+                    txt_str = f"{id} {cat} {x1/img.shape[1]:.6f} {y1/img.shape[0]:.6f} {x2/img.shape[1]:.6f} {y2/img.shape[0]:.6f} {(x1 + (x2 - x1) / 2)/img.shape[1]:.6f} {(y1 + (y2 - y1) / 2)/img.shape[0]:.6f}\n"
+                    with open(path + '.txt', 'a') as f:
+                        f.write(txt_str)
     return img
 
 def detect(save_img=False):
@@ -283,8 +241,7 @@ def detect(save_img=False):
 
 
             print(frame)
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = (int(0.05*im0.shape[1]),int(0.1*im0.shape[0]),int(0.45*im0.shape[1]),int(0.95*im0.shape[0]))
-            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = (int(0.55*im0.shape[1]),int(0.1*im0.shape[0]),int(0.95*im0.shape[1]),int(0.95*im0.shape[0]))
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.05*im0.shape[1]),int(0.15*im0.shape[0]),int(0.95*im0.shape[1]),int(0.85*im0.shape[0])
 
 
             if len(det):
@@ -345,23 +302,9 @@ def detect(save_img=False):
                         if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
                             counter1 += 1
                             
-                        elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
-                            counter2 += 1
+    
                             
-                        # elif ((roi3_x1 < x_middle < roi3_x2 and roi3_y1 < y_middle < roi3_y2)):
-                        #     counter3  += 1
-                            
-                        # elif ((roi4_x1 < x_middle < roi4_x2 and roi4_y1 < y_middle < roi4_y2)):
-                        #     counter4  += 1
-                           
-                        # elif ((roi5_x1 < x_middle < roi5_x2 and roi5_y1 < y_middle < roi5_y2)):
-                        #     counter5  += 1
-                            
-                        # elif ((roi6_x1 < x_middle < roi6_x2 and roi6_y1 < y_middle < roi6_y2)):
-                        #     counter6  += 1
-                            
-
-                        draw_boxes(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path, detected_objects)
+                        draw_boxes(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
         
             else: #SORT should be updated even with no detections
                 tracked_dets = sort_tracker.update()
@@ -393,48 +336,24 @@ def detect(save_img=False):
             text_size = 2
             offset_y = 75
             text_bold = 3
+            
+            cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (255,0,0), 4)
 
-            text1 = f"Head BBOX A : {counter1}"     
-            level_of_service_1 = density_calc(counter1, 5)
-            cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
-            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS :" + level_of_service_1, (1200,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
+            # text1 = f"Head BBOX A : {counter1}"     
+            # level_of_service_1 = density_calc(counter1, 5)
+            # cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
+            # cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, "LoS :" + level_of_service_1, (1200,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
-            text2 = f"Head BBOX B : {counter2}"     
-            level_of_service_2 = density_calc(counter2, 5)
-            cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (0,255,0), 3)
-            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS :" + level_of_service_2, (1200,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, dt_string2, (600,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
+            # text2 = f"Head BBOX B : {counter2}"     
+            # level_of_service_2 = density_calc(counter2, 5)
+            # cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (0,255,0), 3)
+            # cv2.putText(im0, text2, (0,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, "LoS :" + level_of_service_2, (1200,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, dt_string2, (600,int(im0.shape[0]*0.04) + offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
-            # text3 = f"Head BBOX C : {roi_counts['C']}"     
-            # level_of_service_3 = density_calc(roi_counts['C'], 5)
-            # cv2.rectangle(im0, (roi3_x1,roi3_y1), (roi3_x2,roi3_y2), (0,255,0), 3)
-            # cv2.putText(im0, text3, (0,int(im0.shape[0]*0.04) +2*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_3, (500,int(im0.shape[0]*0.04)+2*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string3, (300,int(im0.shape[0]*0.04)+60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
-
-            # text4 = f"Head BBOX D : {roi_counts['D']}"     
-            # level_of_service_4 = density_calc(roi_counts['D'], 5)
-            # cv2.rectangle(im0, (roi4_x1,roi4_y1), (roi4_x2,roi4_y2), (0,255,0), 3)
-            # cv2.putText(im0, text4, (0,int(im0.shape[0]*0.04)+3*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_4, (500,int(im0.shape[0]*0.04)+3*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string4, (300,int(im0.shape[0]*0.04)+90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
-
-            # text5 = f"Head BBOX E : {roi_counts['E']}"     
-            # level_of_service_5 = density_calc(roi_counts['E'], 5)
-            # cv2.rectangle(im0, (roi5_x1,roi5_y1), (roi5_x2,roi5_y2), (0,255,0), 3)
-            # cv2.putText(im0, text5, (0,int(im0.shape[0]*0.04)+4*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_5, (500,int(im0.shape[0]*0.04)+4*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string5, (300,int(im0.shape[0]*0.04)+120), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)
-
-            # text6 = f"Head BBOX F : {roi_counts['F']}"     
-            # level_of_service_6 = density_calc(roi_counts['F'], 5)
-            # cv2.rectangle(im0, (roi6_x1,roi6_y1), (roi6_x2,roi6_y2), (0,255,0), 3)
-            # cv2.putText(im0, text6, (0,int(im0.shape[0]*0.04)+5*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, "LoS :" + level_of_service_6, (500,int(im0.shape[0]*0.04)+5*offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, dt_string6, (300,int(im0.shape[0]*0.04)+150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255) , 2, cv2.LINE_AA)    
+            
             
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
