@@ -159,8 +159,9 @@ class LoadImages:  # for inference
         return self
 
     def __next__(self):
-        if self.count == self.nf:
-            raise StopIteration
+        if self.count >= self.nf:
+            self.count = 0  # Reset to the first file for looping
+
         path = self.files[self.count]
 
         if self.video_flag[self.count]:
@@ -168,14 +169,11 @@ class LoadImages:  # for inference
             self.mode = 'video'
             ret_val, img0 = self.cap.read()
             if not ret_val:
-                self.count += 1
+                # If no frame is retrieved because the video ended
                 self.cap.release()
-                if self.count == self.nf:  # last video
-                    raise StopIteration
-                else:
-                    path = self.files[self.count]
-                    self.new_video(path)
-                    ret_val, img0 = self.cap.read()
+                self.cap = cv2.VideoCapture(path)  # Re-open the current video
+                ret_val, img0 = self.cap.read()
+                self.frame = 0  # Reset frame counter for the video
 
             self.frame += 1
             print(f'video {self.count + 1}/{self.nf} ({self.frame}/{self.nframes}) {path}: ', end='')
@@ -195,6 +193,7 @@ class LoadImages:  # for inference
         img = np.ascontiguousarray(img)
 
         return path, img, img0, self.cap
+
 
     def new_video(self, path):
         self.frame = 0

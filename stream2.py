@@ -1,8 +1,16 @@
-import os
-def get_youtube_stream_url(youtube_url):
-    # Fetch the best quality stream URL
-    stream_url = os.popen(f"youtube-dl -g {youtube_url}").read().strip()
-    return stream_url
+import cv2
+from cap_from_youtube import cap_from_youtube
 
+youtube_url = 'https://www.youtube.com/watch?v=9Z4fg3FEclE'
+cap = cap_from_youtube(youtube_url, '720p60')
 
-print(get_youtube_stream_url("https://www.youtube.com/live/g1tb--rpfVE?si=f_qSuE-C54H7Xxbz"))
+cv2.namedWindow('video', cv2.WINDOW_NORMAL)
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    cv2.imshow('video', frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+    
