@@ -4,12 +4,12 @@ def density_calc (pedestrian, square_meter):
     
     # Define the density ranges for each level of service
     density_ranges = {
-        'A': (0, 0.08),
-        'B': (0.08, 0.27),
-        'C': (0.27, 0.45),
-        'D': (0.45, 0.69),
-        'E': (0.69, 1.66),
-        'F': (1.66, 10000)
+        'A': (0, 0.308),
+        'B': (0.308, 0.431),
+        'C': (0.431, 0.718),
+        'D': (0.718, 1.076),
+        'E': (1.076, 2.153),
+        'F': (2.153, 10000)
     }
     
     # Determine the level of service based on the density

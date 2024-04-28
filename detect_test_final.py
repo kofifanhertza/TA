@@ -24,11 +24,12 @@ from sort import *
 
 from datetime import datetime
 
+
 def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.1*im0.shape[1]),int(0.1*im0.shape[0]),int(0.9*im0.shape[1]),int(0.9*im0.shape[0])
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
         return  "A" 
@@ -222,7 +223,7 @@ def detect(save_img=False):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.1*im0.shape[1]),int(0.1*im0.shape[0]),int(0.9*im0.shape[1]),int(0.9*im0.shape[0])
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -297,21 +298,19 @@ def detect(save_img=False):
                 else:
                     roi_counts[roi_position] += 1
 
-            print(detected_objects)
-
-
+        
             text_size = 1
-            offset_y = 75
+            offset_y = 37
             text_bold = 2
             
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (255,0,0), 3)
 
             text1 = f"Head Detected : {counter1}"     
-            level_of_service = density_calc(counter1, 5)
+            level_of_service = density_calc(counter1, 4.95)
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
-            cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
+            # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS :" + level_of_service, (0,int(im0.shape[0]*0.04)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.04)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
            
@@ -320,6 +319,11 @@ def detect(save_img=False):
             
             # Print time (inference + NMS)
             print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
+
+            # Break gracefully
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
 
             # Stream results
             if view_img:
@@ -345,9 +349,7 @@ def detect(save_img=False):
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
-        # Break gracefully
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        
 
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
