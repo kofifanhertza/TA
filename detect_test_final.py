@@ -29,7 +29,7 @@ def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.51*im0.shape[1]),int(0.32*im0.shape[0]),int(0.8*im0.shape[1]),int( 0.65*im0.shape[0])
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
         return  "A" 
@@ -83,8 +83,8 @@ def detect_draw_heads(img, bbox, identities=None, categories=None, names=None, s
             
             if time_diff >= 0  :
                 if time_diff < 5 :
-                    box_color = (0, 255, 0)  # Color for the bounding box
-                    label_background_color = (0,255,0)
+                    box_color = (0, 0, 255)  # Color for the bounding box
+                    label_background_color = (0,0,255)
                 else :
                     box_color = (0, 0, 255)  # Color for the bounding box           
                     label_background_color = (0,0,255)
@@ -223,7 +223,7 @@ def detect(save_img=False):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.51*im0.shape[1]),int(0.32*im0.shape[0]),int(0.8*im0.shape[1]),int( 0.65*im0.shape[0])
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -309,8 +309,8 @@ def detect(save_img=False):
             level_of_service = density_calc(counter1, 4.95)
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
-            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.04)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
            
