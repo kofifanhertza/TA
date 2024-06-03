@@ -29,14 +29,19 @@ def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.51*im0.shape[1]),int(0.32*im0.shape[0]),int(0.8*im0.shape[1]),int( 0.65*im0.shape[0])
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0*im0.shape[1]),int(0*im0.shape[0]),int(1*im0.shape[1]),int(0.5*im0.shape[0])
+    roi2_x1, roi2_y1, roi2_x2, roi2_y2 = int(0*im0.shape[1]),int(0.5*im0.shape[0]),int(1*im0.shape[1]),int(1*im0.shape[0])
+
+
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
-        return  "A" 
+        return  "ROI_1" 
+    elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
+        return  "ROI_2"
     else :
         return None
 
-def detect_draw_heads(img, bbox, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
+def detect_draw_heads(img, bbox, in_counter, out_counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         # Check if the center of the box is within any of the ROIs
@@ -45,7 +50,6 @@ def detect_draw_heads(img, bbox, identities=None, categories=None, names=None, s
 
         # Only proceed to draw the box if it's within an ROI
         if roi_position is not None:
-            cat = int(categories[i]) if categories is not None else 0
             id = int(identities[i]) if identities is not None else 0
             id_updated = False
             current_video_time = current_frame / frame_rate if current_frame is not None and frame_rate is not None else 0
@@ -57,50 +61,61 @@ def detect_draw_heads(img, bbox, identities=None, categories=None, names=None, s
                     # Calculate the time difference in seconds based on video time
                     time_diff = current_video_time - obj['first_detected']
                     
-                    # Update the object's details
-                    obj.update({
+
+                    if obj['roi_position'] != roi_position :
+
+                        if obj['roi_position'] == "ROI_1" and roi_position == "ROI_2" :
+                            in_counter += 1
+                        else :
+                            out_counter += 1
+
+                        obj.update({
                         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                        'prev_roi_postion': obj["roi_position"],
                         'roi_position': roi_position,
                         "time_in_roi": time_diff
                     })
+                        
+                    else :
+                    # Update the object's details
+                        obj.update({
+                            'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                            'roi_position': roi_position,
+                            "time_in_roi": time_diff
+                        })
                     id_updated = True
-                    # print(f"ID {id} updated.")
                     break  # Exit the loop since we've updated the id
-
+                
+               
             if not id_updated:
             # If the id is not found, append the new object with the first_detected time
                 time_diff = 0
                 detected_object.append({
                     "id": id,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                    "prev_roi_position" : roi_position,
                     "roi_position": roi_position,
                     "first_detected": current_video_time,  # Store the initial detection time
                     "time_in_roi": time_diff  # Initialize the time in ROI as 0 since it's just detected
                 })
-            
+
             label = f"{id}"
             (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1, 1)
             
             if time_diff >= 0  :
-                if time_diff < 5 :
-                    box_color = (0, 0, 255)  # Color for the bounding box
-                    label_background_color = (0,0,255)
-                else :
-                    box_color = (0, 0, 255)  # Color for the bounding box           
-                    label_background_color = (0,0,255)
+                    
+                        box_color = (0, 255, 0)  # Color for the bounding box           
+                        label_background_color = (0,0,255)
+                
+                        text_color = (0, 0, 0)  # Color for the text
+
+                        cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
+                        cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), label_background_color, -1)
+                        cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
+                                    1, text_color, 1)
+
             
-                text_color = (0, 0, 0)  # Color for the text
-
-                cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
-                # cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), label_background_color, -1)
-                # cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
-                #             1, text_color, 1)
-
-                if save_with_object_id:
-                    txt_str = f"{id} {cat} {x1/img.shape[1]:.6f} {y1/img.shape[0]:.6f} {x2/img.shape[1]:.6f} {y2/img.shape[0]:.6f} {(x1 + (x2 - x1) / 2)/img.shape[1]:.6f} {(y1 + (y2 - y1) / 2)/img.shape[0]:.6f}\n"
-                    with open(path + '.txt', 'a') as f:
-                        f.write(txt_str)
-    return img
+    return img, in_counter, out_counter
 
 
 def detect(save_img=False):
@@ -176,6 +191,9 @@ def detect(save_img=False):
     old_img_w = old_img_h = imgsz
     old_img_b = 1
     detected_objects = []
+    in_counter = 0
+    out_counter = 0 
+
     for path, img, im0s, vid_cap in dataset:
 
 
@@ -207,11 +225,11 @@ def detect(save_img=False):
         if classify:
             pred = apply_classifier(pred, modelc, img, im0s)
 
+        
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             counter1, counter2  = 0, 0 
-            roi_counts = {'A': 0, 'B': 0, 'None': 0}
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
                 
@@ -223,7 +241,10 @@ def detect(save_img=False):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
 
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.51*im0.shape[1]),int(0.32*im0.shape[0]),int(0.8*im0.shape[1]),int( 0.65*im0.shape[0])
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0*im0.shape[1]),int(0*im0.shape[0]),int(1*im0.shape[1]),int( 0.5*im0.shape[0])
+            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = int(0*im0.shape[1]),int(0.5*im0.shape[0]),int(1*im0.shape[1]),int(1*im0.shape[0])
+
+            
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -262,8 +283,6 @@ def detect(save_img=False):
                 if save_txt and not save_with_object_id:
                     with open(txt_path + '.txt', 'a') as f:
                         f.write(txt_str)
-
-                # draw boxes for visualization
                         
                 if len(tracked_dets) > 0:
 
@@ -272,32 +291,24 @@ def detect(save_img=False):
                     categories = tracked_dets[:, 4]
 
                     for i, box in enumerate(bbox_xyxy):
-                        x1, y1, x2, y2 = [int(i) for i in box]
-                        # roi = determine_roi(x1,y1,x2,y2,im0)
+                        # x1, y1, x2, y2 = [int(i) for i in box]
+                        # # roi = determine_roi(x1,y1,x2,y2,im0)
 
                         x1, y1, x2, y2 = [int(i) for i in box]
                         y_middle = ((y2 - y1) / 2) + y1
                         x_middle = ((x2 - x1) / 2) + x1
 
-                        # Check which ROI the detection falls into
+                        # # Check which ROI the detection falls into
                         if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
-                            counter1 += 1
-                            
-    
-                            
-                        detect_draw_heads(im0, bbox_xyxy, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+                             counter1 += 1
+                        elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
+                             counter2 += 1
+                        img, in_counter, out_counter = detect_draw_heads(im0, bbox_xyxy, in_counter, out_counter, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
 
             else: #SORT should be updated even with no detections
                 tracked_dets = sort_tracker.update()
             #........................................................
-        
-            for obj in detected_objects:
-                roi_position = obj['roi_position']
-                if roi_position is None:  # Handle cases where roi_position is None
-                    roi_counts['None'] += 1
-                else:
-                    roi_counts[roi_position] += 1
-
+    
         
             text_size = 1
             offset_y = 37
@@ -305,12 +316,20 @@ def detect(save_img=False):
             
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (255,0,0), 3)
 
-            text1 = f"Head Detected : {counter1}"     
-            level_of_service = density_calc(counter1, 4.95)
+            text1 = f"In Counter : {in_counter}"     
+            text2 = f"Out Counter : {out_counter}"
+            #text3 = f"Diff Counter : {in_counter}"             
+            
+            
+            # level_of_service = density_calc(counter1, 4.95)
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
+            cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (255,0,0), 3)
+
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            #cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
            
@@ -327,28 +346,28 @@ def detect(save_img=False):
 
             # Stream results
             
-            cv2.imshow(str(p), im0)
+            #cv2.imshow(str(p), im0)
             # cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            # if save_img:
-            #     if dataset.mode == 'image':
-            #         cv2.imwrite(save_path, im0)
-            #         print(f" The image with the result is saved in: {save_path}")
-            #     else:  # 'video' or 'stream'
-            #         if vid_path != save_path:  # new video
-            #             vid_path = save_path
-            #             if isinstance(vid_writer, cv2.VideoWriter):
-            #                 vid_writer.release()  # release previous video writer
-            #             if vid_cap:  # video
-            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            #             else:  # stream
-            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
-            #                 save_path += '.mp4'
-            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            #         vid_writer.write(im0)
+            if save_img:
+                if dataset.mode == 'image':
+                    cv2.imwrite(save_path, im0)
+                    print(f" The image with the result is saved in: {save_path}")
+                else:  # 'video' or 'stream'
+                    if vid_path != save_path:  # new video
+                        vid_path = save_path
+                        if isinstance(vid_writer, cv2.VideoWriter):
+                            vid_writer.release()  # release previous video writer
+                        if vid_cap:  # video
+                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        else:  # stream
+                            fps, w, h = 30, im0.shape[1], im0.shape[0]
+                            save_path += '.mp4'
+                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    vid_writer.write(im0)
         
 
     if save_txt or save_img:
@@ -356,7 +375,7 @@ def detect(save_img=False):
         #print(f"Results saved to {save_dir}{s}")
     
 
-    print(f'Done. ({time.time() - t0:.3f}s)')
+    print(f'Done. ({time.time() - t1:.3f}s)')
 
 
 if __name__ == '__main__':
