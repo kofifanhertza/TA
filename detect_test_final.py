@@ -23,6 +23,7 @@ from datetime import datetime
 from sort import *
 
 from datetime import datetime
+import mysql.connector 
 
 
 def determine_roi(x1, y1, x2, y2, im0) :
@@ -41,7 +42,7 @@ def determine_roi(x1, y1, x2, y2, im0) :
     else :
         return None
 
-def detect_draw_heads(img, bbox, in_counter, out_counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
+def people_counting(img, bbox, in_counter, out_counter, current_counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         # Check if the center of the box is within any of the ROIs
@@ -60,22 +61,22 @@ def detect_draw_heads(img, bbox, in_counter, out_counter, identities=None, categ
                 if obj['id'] == id:
                     # Calculate the time difference in seconds based on video time
                     time_diff = current_video_time - obj['first_detected']
-                    
-
                     if obj['roi_position'] != roi_position :
 
                         if obj['roi_position'] == "ROI_1" and roi_position == "ROI_2" :
                             in_counter += 1
+                            current_counter += 1
                         else :
                             out_counter += 1
+                            if current_counter > 0 :
+                                current_counter -= 1
 
                         obj.update({
                         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
                         'prev_roi_postion': obj["roi_position"],
                         'roi_position': roi_position,
                         "time_in_roi": time_diff
-                    })
-                        
+                    })                 
                     else :
                     # Update the object's details
                         obj.update({
@@ -85,8 +86,7 @@ def detect_draw_heads(img, bbox, in_counter, out_counter, identities=None, categ
                         })
                     id_updated = True
                     break  # Exit the loop since we've updated the id
-                
-               
+
             if not id_updated:
             # If the id is not found, append the new object with the first_detected time
                 time_diff = 0
@@ -115,7 +115,7 @@ def detect_draw_heads(img, bbox, in_counter, out_counter, identities=None, categ
                                     1, text_color, 1)
 
             
-    return img, in_counter, out_counter
+    return img, in_counter, out_counter, current_counter
 
 
 def detect(save_img=False):
@@ -153,7 +153,7 @@ def detect(save_img=False):
     # Initialize
     set_logging()
     device = select_device(opt.device)
-    half = device.type != 'cpu'  # half precision only supported on CUDA
+    half = False  # half precision only supported on CUDA
 
     # Load model
     model = attempt_load(weights, map_location=device)  # load FP32 model
@@ -166,11 +166,29 @@ def detect(save_img=False):
     if half:
         model.half()  # to FP16
 
-    # Second-stage classifier
-    classify = False
-    if classify:
-        modelc = load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
+    # Set MySQL Database
+    mydb = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        passwd="kh670205"
+    )
+
+    mycursor = mydb.cursor()
+
+
+    mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
+    mycursor.execute("USE testdb")
+
+    mycursor.execute("""
+        CREATE TABLE IF NOT EXISTS detectionData (
+            detection_id INT,
+            room_id INTEGER,
+            timestamp VARCHAR(255),
+            n_in INTEGER,
+            n_out INTEGER,
+            n_current INTEGER
+        )
+    """)
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -190,9 +208,11 @@ def detect(save_img=False):
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     old_img_w = old_img_h = imgsz
     old_img_b = 1
+
+    # Initialize Value
     detected_objects = []
-    in_counter = 0
-    out_counter = 0 
+    room_id = opt.room_ID
+    prev_counter = 0 
 
     for path, img, im0s, vid_cap in dataset:
 
@@ -221,12 +241,6 @@ def detect(save_img=False):
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
         t3 = time_synchronized()
 
-        # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
-
-        
-
         # Process detections
         for i, det in enumerate(pred):  # detections per image
             counter1, counter2  = 0, 0 
@@ -239,12 +253,11 @@ def detect(save_img=False):
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # img.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
-            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+            
 
             roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0*im0.shape[1]),int(0*im0.shape[0]),int(1*im0.shape[1]),int( 0.5*im0.shape[0])
             roi2_x1, roi2_y1, roi2_x2, roi2_y2 = int(0*im0.shape[1]),int(0.5*im0.shape[0]),int(1*im0.shape[1]),int(1*im0.shape[0])
 
-            
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -303,7 +316,48 @@ def detect(save_img=False):
                              counter1 += 1
                         elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
                              counter2 += 1
-                        img, in_counter, out_counter = detect_draw_heads(im0, bbox_xyxy, in_counter, out_counter, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+
+                        query = """
+                            SELECT detection_id, n_in, n_out, n_current 
+                            FROM detectionData 
+                            WHERE room_id = %s 
+                            ORDER BY detection_id DESC 
+                            LIMIT 1
+                        """
+
+                        # Execute the query
+                        mycursor.execute(query, (room_id,))
+
+                        # Fetch the result
+                        result = mycursor.fetchone()
+
+                        # Initialize the counters with the values from the database
+                        if result:
+                            det_id, in_counter, out_counter, current_counter = result
+                            det_id += 1
+                        else:
+                            # If no result is found, initialize with default values
+                            in_counter = 0
+                            out_counter = 0
+                            det_id = 0
+                            current_counter = 0
+                                
+                        img, in_counter, out_counter, current_counter = people_counting(im0, bbox_xyxy, in_counter, out_counter, current_counter, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+
+                        # Insert into Database
+                        if prev_counter != current_counter :
+
+                            sql = "INSERT INTO detectionData (detection_id, room_id, timestamp, n_in, n_out, n_current) VALUES (%s, %s, %s, %s, %s, %s)"
+                            date = datetime.now()
+
+                            
+                            val = (det_id, room_id, date, in_counter, out_counter, current_counter)
+
+                            # Execute the query
+                            mycursor.execute(sql, val)
+                            mydb.commit()
+                            prev_counter = current_counter
+
 
             else: #SORT should be updated even with no detections
                 tracked_dets = sort_tracker.update()
@@ -318,7 +372,7 @@ def detect(save_img=False):
 
             text1 = f"In Counter : {in_counter}"     
             text2 = f"Out Counter : {out_counter}"
-            #text3 = f"Diff Counter : {in_counter}"             
+            text3 = f"Inside Counter : {current_counter}"             
             
             
             # level_of_service = density_calc(counter1, 4.95)
@@ -328,7 +382,7 @@ def detect(save_img=False):
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            #cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
 
@@ -346,33 +400,33 @@ def detect(save_img=False):
 
             # Stream results
             
-            #cv2.imshow(str(p), im0)
-            # cv2.waitKey(1)  # 1 millisecond
+            cv2.imshow(str(p), im0)
+            #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            if save_img:
-                if dataset.mode == 'image':
-                    cv2.imwrite(save_path, im0)
-                    print(f" The image with the result is saved in: {save_path}")
-                else:  # 'video' or 'stream'
-                    if vid_path != save_path:  # new video
-                        vid_path = save_path
-                        if isinstance(vid_writer, cv2.VideoWriter):
-                            vid_writer.release()  # release previous video writer
-                        if vid_cap:  # video
-                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        else:  # stream
-                            fps, w, h = 30, im0.shape[1], im0.shape[0]
-                            save_path += '.mp4'
-                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                    vid_writer.write(im0)
+            # if save_img:
+            #     if dataset.mode == 'image':
+            #         cv2.imwrite(save_path, im0)
+            #         print(f" The image with the result is saved in: {save_path}")
+            #     else:  # 'video' or 'stream'
+            #         if vid_path != save_path:  # new video
+            #             vid_path = save_path
+            #             if isinstance(vid_writer, cv2.VideoWriter):
+            #                 vid_writer.release()  # release previous video writer
+            #             if vid_cap:  # video
+            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
+            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            #             else:  # stream
+            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
+            #                 save_path += '.mp4'
+            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+            #         vid_writer.write(im0)
         
 
     if save_txt or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
-        #print(f"Results saved to {save_dir}{s}")
+        print(f"Results saved to {save_dir}{s}")
     
 
     print(f'Done. ({time.time() - t1:.3f}s)')
@@ -403,6 +457,8 @@ if __name__ == '__main__':
     parser.add_argument('--colored-trk', action='store_true', help='assign different color to every track')
     parser.add_argument('--save-bbox-dim', action='store_true', help='save bounding box dimensions with --save-txt tracks')
     parser.add_argument('--save-with-object-id', action='store_true', help='save results with object id to *.txt')
+
+    parser.add_argument('--room-ID', type=int, default=0, help='detected room id')
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))

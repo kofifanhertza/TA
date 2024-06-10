@@ -159,9 +159,9 @@ class LoadImages:  # for inference
         return self
 
     def __next__(self):
-        if self.count >= self.nf:
-            self.count = 0  # Reset to the first file for looping
-
+        if self.count == self.nf:
+            raise StopIteration
+        
         path = self.files[self.count]
 
         if self.video_flag[self.count]:
@@ -169,11 +169,14 @@ class LoadImages:  # for inference
             self.mode = 'video'
             ret_val, img0 = self.cap.read()
             if not ret_val:
-                # If no frame is retrieved because the video ended
+                self.count += 1
                 self.cap.release()
-                self.cap = cv2.VideoCapture(path)  # Re-open the current video
-                ret_val, img0 = self.cap.read()
-                self.frame = 0  # Reset frame counter for the video
+                if self.count == self.nf:  # last video
+                    raise StopIteration
+                else:
+                    path = self.files[self.count]
+                    self.new_video(path)
+                    ret_val, img0 = self.cap.read()
 
             self.frame += 1
             print(f'video {self.count + 1}/{self.nf} ({self.frame}/{self.nframes}) {path}: ', end='')
@@ -291,9 +294,13 @@ class LoadStreams:  # multiple IP or RTSP cameras
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             self.fps = cap.get(cv2.CAP_PROP_FPS) % 100
 
-            _, self.read = cap.read()  # guarantee first frame
-            read = cv2.resize(self.read,(640, 480))
-            self.imgs[i] = read
+
+            _, self.imgs[i] = cap.read() # guarantee first frame
+        
+            # _, self.read = cap.read()  # guarantee first frame
+            # read = cv2.resize(self.read,(640, 480))
+            # self.imgs[i] = read
+
             thread = Thread(target=self.update, args=([i, cap]), daemon=True)
             print(f' success ({w}x{h} at {self.fps:.2f} FPS).')
             thread.start()
@@ -315,7 +322,7 @@ class LoadStreams:  # multiple IP or RTSP cameras
 
             if n == 1:  # read every 4th frame
                 success, im = cap.retrieve()
-                im = cv2.resize(im, (640, 480))
+                # im = cv2.resize(im, (640, 480))
                 self.imgs[index] = im if success else self.imgs[index] * 0
                 n = 0
             # time.sleep(1 / self.fps)  # wait time
