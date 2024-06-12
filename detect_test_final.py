@@ -68,8 +68,7 @@ def people_counting(img, bbox, in_counter, out_counter, current_counter, identit
                             current_counter += 1
                         else :
                             out_counter += 1
-                            if current_counter > 0 :
-                                current_counter -= 1
+                            current_counter -= 1
 
                         obj.update({
                         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
@@ -213,6 +212,10 @@ def detect(save_img=False):
     detected_objects = []
     room_id = opt.room_ID
     prev_counter = 0 
+    in_counter = 0
+    out_counter = 0
+    det_id = 0
+    current_counter = 0
 
     for path, img, im0s, vid_cap in dataset:
 
@@ -347,11 +350,16 @@ def detect(save_img=False):
                         # Insert into Database
                         if prev_counter != current_counter :
 
+                            if current_counter < 0:
+                                current_counter_db = 0
+                            else:
+                                current_counter_db = current_counter
+
                             sql = "INSERT INTO detectionData (detection_id, room_id, timestamp, n_in, n_out, n_current) VALUES (%s, %s, %s, %s, %s, %s)"
                             date = datetime.now()
 
                             
-                            val = (det_id, room_id, date, in_counter, out_counter, current_counter)
+                            val = (det_id, room_id, date, in_counter, out_counter, current_counter_db)
 
                             # Execute the query
                             mycursor.execute(sql, val)
@@ -400,28 +408,28 @@ def detect(save_img=False):
 
             # Stream results
             
-            cv2.imshow(str(p), im0)
+            #cv2.imshow(str(p), im0)
             #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            # if save_img:
-            #     if dataset.mode == 'image':
-            #         cv2.imwrite(save_path, im0)
-            #         print(f" The image with the result is saved in: {save_path}")
-            #     else:  # 'video' or 'stream'
-            #         if vid_path != save_path:  # new video
-            #             vid_path = save_path
-            #             if isinstance(vid_writer, cv2.VideoWriter):
-            #                 vid_writer.release()  # release previous video writer
-            #             if vid_cap:  # video
-            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            #             else:  # stream
-            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
-            #                 save_path += '.mp4'
-            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            #         vid_writer.write(im0)
+            if save_img:
+                if dataset.mode == 'image':
+                    cv2.imwrite(save_path, im0)
+                    print(f" The image with the result is saved in: {save_path}")
+                else:  # 'video' or 'stream'
+                    if vid_path != save_path:  # new video
+                        vid_path = save_path
+                        if isinstance(vid_writer, cv2.VideoWriter):
+                            vid_writer.release()  # release previous video writer
+                        if vid_cap:  # video
+                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        else:  # stream
+                            fps, w, h = 30, im0.shape[1], im0.shape[0]
+                            save_path += '.mp4'
+                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    vid_writer.write(im0)
         
 
     if save_txt or save_img:
