@@ -1,5 +1,6 @@
 import argparse
 import time
+import json
 from pathlib import Path
 
 import cv2
@@ -19,7 +20,7 @@ from los import density_calc
 
 from datetime import datetime
 
-#For SORT tracking
+
 from sort import *
 
 from datetime import datetime
@@ -30,19 +31,19 @@ def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0*im0.shape[1]),int(0*im0.shape[0]),int(1*im0.shape[1]),int(0.5*im0.shape[0])
-    roi2_x1, roi2_y1, roi2_x2, roi2_y2 = int(0*im0.shape[1]),int(0.5*im0.shape[0]),int(1*im0.shape[1]),int(1*im0.shape[0])
+    # roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int(0.568*im0.shape[0])
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
 
 
     # Check which ROI the detection falls into
     if roi1_x1 < x_middle < roi1_x2 and roi1_y1 < y_middle < roi1_y2:
         return  "ROI_1" 
-    elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
-        return  "ROI_2"
+    # elif roi2_x1 < x_middle < roi2_x2 and roi2_y1 < y_middle < roi2_y2:
+    #     return  "ROI_2"
     else :
         return None
 
-def people_counting(img, bbox, in_counter, out_counter, current_counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
+def people_counting(img, bbox, counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         # Check if the center of the box is within any of the ROIs
@@ -61,29 +62,11 @@ def people_counting(img, bbox, in_counter, out_counter, current_counter, identit
                 if obj['id'] == id:
                     # Calculate the time difference in seconds based on video time
                     time_diff = current_video_time - obj['first_detected']
-                    if obj['roi_position'] != roi_position :
+                    
+                    if obj['roi_position'] == "ROI_1" :
+                        counter += 1
 
-                        if obj['roi_position'] == "ROI_1" and roi_position == "ROI_2" :
-                            in_counter += 1
-                            current_counter += 1
-                        else :
-                            out_counter += 1
-                            current_counter -= 1
-
-                        obj.update({
-                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                        'prev_roi_postion': obj["roi_position"],
-                        'roi_position': roi_position,
-                        "time_in_roi": time_diff
-                    })                 
-                    else :
-                    # Update the object's details
-                        obj.update({
-                            'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                            'roi_position': roi_position,
-                            "time_in_roi": time_diff
-                        })
-                    id_updated = True
+        
                     break  # Exit the loop since we've updated the id
 
             if not id_updated:
@@ -92,7 +75,6 @@ def people_counting(img, bbox, in_counter, out_counter, current_counter, identit
                 detected_object.append({
                     "id": id,
                     "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                    "prev_roi_position" : roi_position,
                     "roi_position": roi_position,
                     "first_detected": current_video_time,  # Store the initial detection time
                     "time_in_roi": time_diff  # Initialize the time in ROI as 0 since it's just detected
@@ -113,8 +95,7 @@ def people_counting(img, bbox, in_counter, out_counter, current_counter, identit
                         cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
                                     1, text_color, 1)
 
-            
-    return img, in_counter, out_counter, current_counter
+    return img, counter
 
 
 def detect(save_img=False):
@@ -181,11 +162,11 @@ def detect(save_img=False):
     mycursor.execute("""
         CREATE TABLE IF NOT EXISTS detectionData (
             detection_id INT,
-            room_id INTEGER,
+            location_id INTEGER,
             timestamp VARCHAR(255),
-            n_in INTEGER,
-            n_out INTEGER,
-            n_current INTEGER
+            counter INTEGER,
+            level_of_service VARCHAR(1),
+            detection_duration INT
         )
     """)
 
@@ -210,14 +191,16 @@ def detect(save_img=False):
 
     # Initialize Value
     detected_objects = []
-    room_id = opt.room_ID
+    location_id = opt.room_ID
     prev_counter = 0 
-    in_counter = 0
-    out_counter = 0
+    counter = 0
     det_id = 0
-    current_counter = 0
+    los = "A"
+    
 
     for path, img, im0s, vid_cap in dataset:
+        duration = 0
+        start_time = time.time()
 
 
         img = torch.from_numpy(img).to(device)
@@ -246,6 +229,7 @@ def detect(save_img=False):
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
+            
             if webcam:  # batch_size >= 1
                 p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
                 
@@ -257,8 +241,8 @@ def detect(save_img=False):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             
 
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0*im0.shape[1]),int(0*im0.shape[0]),int(1*im0.shape[1]),int( 0.5*im0.shape[0])
-            roi2_x1, roi2_y1, roi2_x2, roi2_y2 = int(0*im0.shape[1]),int(0.5*im0.shape[0]),int(1*im0.shape[1]),int(1*im0.shape[0])
+            # roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
 
 
             if len(det):
@@ -308,42 +292,62 @@ def detect(save_img=False):
                     for i, box in enumerate(bbox_xyxy):
         
                         query = """
-                            SELECT detection_id, n_in, n_out, n_current 
+                            SELECT detection_id, counter 
                             FROM detectionData 
-                            WHERE room_id = %s 
+                            WHERE location_id = %s 
                             ORDER BY detection_id DESC 
                             LIMIT 1
                         """
                         # Execute the query
-                        mycursor.execute(query, (room_id,))
+                        mycursor.execute(query, (location_id,))
 
                         # Fetch the result
                         result = mycursor.fetchone()
 
                         # Initialize the counters with the values from the database
                         if result:
-                            det_id, in_counter, out_counter, current_counter = result
+                            det_id, counter = result
                             det_id += 1
 
-                        img, in_counter, out_counter, current_counter = people_counting(im0, bbox_xyxy, in_counter, out_counter, current_counter, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+                        img, counter = people_counting(im0, bbox_xyxy, 0, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+                        los = density_calc(counter, 4.95)
+                        end_time = time.time()
+                        duration = int((end_time - start_time) * 1000)
+                        date = datetime.now()
+
+                        if los == "F" :
+                            date_json = date.strftime('%Y-%m-%d %H:%M:%S'),
+                            dump = {
+                                "detection_id" : det_id,
+                                "location_id" : location_id,
+                                "timestamp" : date_json,
+                                "counter"   : counter,
+                                "los"       : los,
+                                "duration_ms" : duration
+                            }
+                            file_name = f"output_{det_id}.json"
+                            file_path = 'outputs/' + file_name
+                            
+                            with open(file_path, 'w') as json_file:
+                                json.dump(dump, json_file, indent = 4)
+
 
                         # Insert into Database
-                        if prev_counter != current_counter :
-                            if current_counter < 0:
-                                current_counter_db = 0
-                            else:
-                                current_counter_db = current_counter
-
-                            sql = "INSERT INTO detectionData (detection_id, room_id, timestamp, n_in, n_out, n_current) VALUES (%s, %s, %s, %s, %s, %s)"
-                            date = datetime.now()
-
+                        if prev_counter != counter :
+            
+                            sql = "INSERT INTO detectionData (detection_id, location_id, timestamp, counter, level_of_service, detection_duration) VALUES (%s, %s, %s, %s, %s, %s)"
                             
-                            val = (det_id, room_id, date, in_counter, out_counter, current_counter_db)
+                            
+
+                        
+                            val = (det_id, location_id, date, counter, los, duration)
+                            duration = 0
 
                             # Execute the query
                             mycursor.execute(sql, val)
                             mydb.commit()
-                            prev_counter = current_counter
+                            prev_counter = counter
+        
 
 
             else: #SORT should be updated even with no detections
@@ -356,19 +360,19 @@ def detect(save_img=False):
             
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (255,0,0), 3)
 
-            text1 = f"In Counter : {in_counter}"     
-            text2 = f"Out Counter : {out_counter}"
-            text3 = f"Inside Counter : {current_counter}"             
+            text1 = f"Counter : {counter}"     
+            text2 = f"Level of Service : {los}"
+                    
             
             
-            # level_of_service = density_calc(counter1, 4.95)
+            
             cv2.rectangle(im0, (roi1_x1,roi1_y1), (roi1_x2,roi1_y2), (0,255,0), 3)
-            cv2.rectangle(im0, (roi2_x1,roi2_y1), (roi2_x2,roi2_y2), (255,0,0), 3)
+            
 
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            
             # cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
         
@@ -381,28 +385,28 @@ def detect(save_img=False):
 
 
             # Stream results
-            cv2.imshow(str(p), im0)
+            # cv2.imshow(str(p), im0)
             #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            # if save_img:
-            #     if dataset.mode == 'image':
-            #         cv2.imwrite(save_path, im0)
-            #         print(f" The image with the result is saved in: {save_path}")
-            #     else:  # 'video' or 'stream'
-            #         if vid_path != save_path:  # new video
-            #             vid_path = save_path
-            #             if isinstance(vid_writer, cv2.VideoWriter):
-            #                 vid_writer.release()  # release previous video writer
-            #             if vid_cap:  # video
-            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            #             else:  # stream
-            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
-            #                 save_path += '.mp4'
-            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            #         vid_writer.write(im0)
+            if save_img:
+                if dataset.mode == 'image':
+                    cv2.imwrite(save_path, im0)
+                    print(f" The image with the result is saved in: {save_path}")
+                else:  # 'video' or 'stream'
+                    if vid_path != save_path:  # new video
+                        vid_path = save_path
+                        if isinstance(vid_writer, cv2.VideoWriter):
+                            vid_writer.release()  # release previous video writer
+                        if vid_cap:  # video
+                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        else:  # stream
+                            fps, w, h = 30, im0.shape[1], im0.shape[0]
+                            save_path += '.mp4'
+                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    vid_writer.write(im0)
         
 
     if save_txt or save_img:
@@ -439,7 +443,7 @@ if __name__ == '__main__':
     parser.add_argument('--save-bbox-dim', action='store_true', help='save bounding box dimensions with --save-txt tracks')
     parser.add_argument('--save-with-object-id', action='store_true', help='save results with object id to *.txt')
 
-    parser.add_argument('--room-ID', type=int, default=0, help='detected room id')
+    parser.add_argument('--room-ID', type=int, default=1, help='detected room id')
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
