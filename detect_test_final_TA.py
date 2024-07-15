@@ -26,6 +26,9 @@ from sort import *
 from datetime import datetime
 import mysql.connector 
 
+def create_json () :
+    return json_file
+
 
 def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
@@ -158,7 +161,6 @@ def detect(save_img=False):
 
     mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
     mycursor.execute("USE testdb")
-
     mycursor.execute("""
         CREATE TABLE IF NOT EXISTS detectionData (
             detection_id INT,
@@ -191,7 +193,7 @@ def detect(save_img=False):
 
     # Initialize Value
     detected_objects = []
-    location_id = opt.room_ID
+    location_id = opt.location_ID
     prev_counter = 0 
     counter = 0
     det_id = 0
@@ -336,10 +338,7 @@ def detect(save_img=False):
                         if prev_counter != counter :
             
                             sql = "INSERT INTO detectionData (detection_id, location_id, timestamp, counter, level_of_service, detection_duration) VALUES (%s, %s, %s, %s, %s, %s)"
-                            
-                            
-
-                        
+                                            
                             val = (det_id, location_id, date, counter, los, duration)
                             duration = 0
 
@@ -348,8 +347,6 @@ def detect(save_img=False):
                             mydb.commit()
                             prev_counter = counter
         
-
-
             else: #SORT should be updated even with no detections
                 tracked_dets = sort_tracker.update()
             #........................................................
@@ -385,7 +382,7 @@ def detect(save_img=False):
 
 
             # Stream results
-            # cv2.imshow(str(p), im0)
+            cv2.imshow(str(p), im0)
             #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
@@ -443,7 +440,8 @@ if __name__ == '__main__':
     parser.add_argument('--save-bbox-dim', action='store_true', help='save bounding box dimensions with --save-txt tracks')
     parser.add_argument('--save-with-object-id', action='store_true', help='save results with object id to *.txt')
 
-    parser.add_argument('--room-ID', type=int, default=1, help='detected room id')
+    parser.add_argument('--location-ID', type=int, default=1, help='detected room id')
+    parser.add_argument('--location-name', type=str, default="a location", help='location name for detection')
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
