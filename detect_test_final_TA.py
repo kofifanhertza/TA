@@ -24,18 +24,42 @@ from datetime import datetime
 from sort import *
 
 from datetime import datetime
-import mysql.connector 
+# import mysql.connector 
 
-def create_json () :
-    return json_file
+def create_initial_json(source):
+    data_structure = {
+        "metadata": {
+            "technology": "YOLO",
+            "model_version": "v7.0",
+            "created_by": "Kofifan",
+            "created_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source_video": source
+        },
+        "data": []
+    }
+    return data_structure
+
+
+def add_data(json_structure, detection_id, location_id, location_name, timestamp, counter, los, duration_ms):
+    new_entry = {
+        "detection_id": detection_id,
+        "location_id": location_id,
+        "location_name" : location_name,
+        "timestamp": timestamp,
+        "people_detected": counter,
+        "level_of_service": los,
+        "detection_duration_ms": duration_ms
+    }
+    json_structure["data"].append(new_entry)
+
 
 
 def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
     x_middle = ((x2 - x1) / 2) + x1
 
-    # roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int(0.568*im0.shape[0])
-    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
+    roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int(0.568*im0.shape[0])
+    #roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
 
 
     # Check which ROI the detection falls into
@@ -150,27 +174,33 @@ def detect(save_img=False):
         model.half()  # to FP16
 
     # Set MySQL Database
-    mydb = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        passwd="kh670205"
-    )
+    # mydb = mysql.connector.connect(
+    #     host="localhost",
+    #     user="root",
+    #     passwd="kh670205"
+    # )
 
-    mycursor = mydb.cursor()
+    # mycursor = mydb.cursor()
 
 
-    mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
-    mycursor.execute("USE testdb")
-    mycursor.execute("""
-        CREATE TABLE IF NOT EXISTS detectionData (
-            detection_id INT,
-            location_id INTEGER,
-            timestamp VARCHAR(255),
-            counter INTEGER,
-            level_of_service VARCHAR(1),
-            detection_duration INT
-        )
-    """)
+    # mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
+    # mycursor.execute("USE testdb")
+    # mycursor.execute("""
+    #     CREATE TABLE IF NOT EXISTS detectionData (
+    #         detection_id INT,
+    #         location_id INTEGER,
+    #         timestamp VARCHAR(255),
+    #         counter INTEGER,
+    #         level_of_service VARCHAR(1),
+    #         detection_duration INT
+    #     )
+    # """)
+
+
+    if source == 0 :
+        source = "webcam"
+     
+    json_structure = create_initial_json(source)
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -194,6 +224,7 @@ def detect(save_img=False):
     # Initialize Value
     detected_objects = []
     location_id = opt.location_ID
+    location_name = opt.location_name
     prev_counter = 0 
     counter = 0
     det_id = 0
@@ -243,8 +274,8 @@ def detect(save_img=False):
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             
 
-            # roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
-            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
+            roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.215*im0.shape[1]),int(0.082*im0.shape[0]),int(0.729*im0.shape[1]),int( 0.568*im0.shape[0])
+            #roi1_x1, roi1_y1, roi1_x2, roi1_y2 = int(0.2*im0.shape[1]),int(0.2*im0.shape[0]),int(0.8*im0.shape[1]),int(0.8*im0.shape[0])
 
 
             if len(det):
@@ -293,23 +324,22 @@ def detect(save_img=False):
 
                     for i, box in enumerate(bbox_xyxy):
         
-                        query = """
-                            SELECT detection_id, counter 
-                            FROM detectionData 
-                            WHERE location_id = %s 
-                            ORDER BY detection_id DESC 
-                            LIMIT 1
-                        """
-                        # Execute the query
-                        mycursor.execute(query, (location_id,))
+                        # query = """
+                        #     SELECT detection_id, counter 
+                        #     FROM detectionData 
+                        #     WHERE location_id = %s 
+                        #     ORDER BY detection_id DESC 
+                        #     LIMIT 1
+                        # """
+                        # # Execute the query
+                        # mycursor.execute(query, (location_id,))
 
-                        # Fetch the result
-                        result = mycursor.fetchone()
+                        # # Fetch the result
+                        # result = mycursor.fetchone()
 
                         # Initialize the counters with the values from the database
-                        if result:
-                            det_id, counter = result
-                            det_id += 1
+                        # if result:
+                       
 
                         img, counter = people_counting(im0, bbox_xyxy, 0, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
                         los = density_calc(counter, 4.95)
@@ -317,21 +347,20 @@ def detect(save_img=False):
                         duration = int((end_time - start_time) * 1000)
                         date = datetime.now()
 
-                        if los == "F" :
-                            date_json = date.strftime('%Y-%m-%d %H:%M:%S'),
-                            dump = {
-                                "detection_id" : det_id,
-                                "location_id" : location_id,
-                                "timestamp" : date_json,
-                                "counter"   : counter,
-                                "los"       : los,
-                                "duration_ms" : duration
-                            }
-                            file_name = f"output_{det_id}.json"
-                            file_path = 'outputs/' + file_name
+
+                        if prev_counter != counter :
+                            det_id, counter = det_id, counter
+                            det_id += 1
+
                             
-                            with open(file_path, 'w') as json_file:
-                                json.dump(dump, json_file, indent = 4)
+                            if los == "F" :
+                                date_json = date.strftime('%Y-%m-%d %H:%M:%S'),
+                                add_data(json_structure, det_id, location_id, location_name, date_json, counter, los, duration)
+                                file_name = f"output_{det_id}.json"
+                                file_path = 'outputs/' + file_name
+                                
+                                with open(file_path, 'w') as json_file:
+                                    json.dump(json_structure, json_file, indent = 4)
 
 
                         # Insert into Database
@@ -343,8 +372,8 @@ def detect(save_img=False):
                             duration = 0
 
                             # Execute the query
-                            mycursor.execute(sql, val)
-                            mydb.commit()
+                            # mycursor.execute(sql, val)
+                            # mydb.commit()
                             prev_counter = counter
         
             else: #SORT should be updated even with no detections
@@ -386,24 +415,24 @@ def detect(save_img=False):
             #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            if save_img:
-                if dataset.mode == 'image':
-                    cv2.imwrite(save_path, im0)
-                    print(f" The image with the result is saved in: {save_path}")
-                else:  # 'video' or 'stream'
-                    if vid_path != save_path:  # new video
-                        vid_path = save_path
-                        if isinstance(vid_writer, cv2.VideoWriter):
-                            vid_writer.release()  # release previous video writer
-                        if vid_cap:  # video
-                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        else:  # stream
-                            fps, w, h = 30, im0.shape[1], im0.shape[0]
-                            save_path += '.mp4'
-                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                    vid_writer.write(im0)
+            # if save_img:
+            #     if dataset.mode == 'image':
+            #         cv2.imwrite(save_path, im0)
+            #         print(f" The image with the result is saved in: {save_path}")
+            #     else:  # 'video' or 'stream'
+            #         if vid_path != save_path:  # new video
+            #             vid_path = save_path
+            #             if isinstance(vid_writer, cv2.VideoWriter):
+            #                 vid_writer.release()  # release previous video writer
+            #             if vid_cap:  # video
+            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
+            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            #             else:  # stream
+            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
+            #                 save_path += '.mp4'
+            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+            #         vid_writer.write(im0)
         
 
     if save_txt or save_img:
