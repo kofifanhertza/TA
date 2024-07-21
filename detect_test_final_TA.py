@@ -92,8 +92,6 @@ def people_counting(img, bbox, counter, identities=None, categories=None, names=
                     
                     if obj['roi_position'] == "ROI_1" :
                         counter += 1
-
-        
                     break  # Exit the loop since we've updated the id
 
             if not id_updated:
@@ -114,13 +112,11 @@ def people_counting(img, bbox, counter, identities=None, categories=None, names=
                     
                         box_color = (0, 255, 0)  # Color for the bounding box           
                         label_background_color = (0,0,255)
-                
                         text_color = (0, 0, 0)  # Color for the text
-
                         cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
-                        cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), label_background_color, -1)
-                        cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
-                                    1, text_color, 1)
+                        # cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), label_background_color, -1)
+                        # cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 
+                        #             1, text_color, 1)
 
     return img, counter
 
@@ -397,7 +393,7 @@ def detect(save_img=False):
 
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            # cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             
             # cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
@@ -411,28 +407,28 @@ def detect(save_img=False):
 
 
             # Stream results
-            cv2.imshow(str(p), im0)
+            # cv2.imshow(str(p), im0)
             #cv2.waitKey(1)  # 1 millisecond
 
             # Save results (image with detections)
-            # if save_img:
-            #     if dataset.mode == 'image':
-            #         cv2.imwrite(save_path, im0)
-            #         print(f" The image with the result is saved in: {save_path}")
-            #     else:  # 'video' or 'stream'
-            #         if vid_path != save_path:  # new video
-            #             vid_path = save_path
-            #             if isinstance(vid_writer, cv2.VideoWriter):
-            #                 vid_writer.release()  # release previous video writer
-            #             if vid_cap:  # video
-            #                 fps = vid_cap.get(cv2.CAP_PROP_FPS)
-            #                 w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            #                 h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            #             else:  # stream
-            #                 fps, w, h = 30, im0.shape[1], im0.shape[0]
-            #                 save_path += '.mp4'
-            #             vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-            #         vid_writer.write(im0)
+            if save_img:
+                if dataset.mode == 'image':
+                    cv2.imwrite(save_path, im0)
+                    print(f" The image with the result is saved in: {save_path}")
+                else:  # 'video' or 'stream'
+                    if vid_path != save_path:  # new video
+                        vid_path = save_path
+                        if isinstance(vid_writer, cv2.VideoWriter):
+                            vid_writer.release()  # release previous video writer
+                        if vid_cap:  # video
+                            fps = vid_cap.get(cv2.CAP_PROP_FPS)
+                            w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        else:  # stream
+                            fps, w, h = 30, im0.shape[1], im0.shape[0]
+                            save_path += '.mp4'
+                        vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+                    vid_writer.write(im0)
         
 
     if save_txt or save_img:

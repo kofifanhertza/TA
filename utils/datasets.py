@@ -320,7 +320,7 @@ class LoadStreams:  # multiple IP or RTSP cameras
             # _, self.imgs[index] = cap.read()
             cap.grab()
 
-            if n == 1:  # read every 4th frame
+            if n == 6:  # read every 6th frame
                 success, im = cap.retrieve()
                 # im = cv2.resize(im, (640, 480))
                 self.imgs[index] = im if success else self.imgs[index] * 0
