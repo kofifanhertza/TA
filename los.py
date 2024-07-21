@@ -1,15 +1,18 @@
 def density_calc (pedestrian, square_meter):
     # Calculate the density of people per square meter
-    density = pedestrian / square_meter
+    if pedestrian == 0 :
+        return 'A'
+
+    density = square_meter / pedestrian
     
     # Define the density ranges for each level of service
     density_ranges = {
-        'A': (0, 0.308),
-        'B': (0.308, 0.431),
-        'C': (0.431, 0.718),
-        'D': (0.718, 1.076),
-        'E': (1.076, 2.153),
-        'F': (2.153, 10000)
+        'A': (1.9, 10000),
+        'B': (1.6, 1.9),
+        'C': (1.1, 1.6),
+        'D': (0.7, 1.1),
+        'E': (0.5, 0.7),
+        'F': (0, 0.5)
     }
     
     # Determine the level of service based on the density
