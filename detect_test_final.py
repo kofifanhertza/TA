@@ -1,5 +1,6 @@
 import argparse
 import time
+import json
 from pathlib import Path
 
 import cv2
@@ -12,10 +13,8 @@ from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
-from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
 
-from los import density_calc
 
 from datetime import datetime
 
@@ -23,8 +22,31 @@ from datetime import datetime
 from sort import *
 
 from datetime import datetime
-import mysql.connector 
+# import mysql.connector 
 
+def create_initial_json(source):
+    data_structure = {
+        "metadata": {
+            "technology": "YOLO",
+            "model_version": "v7.0",
+            "created_by": "Kofifan",
+            "created_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source_video": source
+        },
+        "data": []
+    }
+    return data_structure
+
+def add_data(json_structure, detection_id, location_id, location_name, timestamp, n_in, n_out):
+    new_entry = {
+        "detection_id": detection_id,
+        "location_id": location_id,
+        "location_name" : location_name,
+        "timestamp": timestamp,
+        "n_in": n_in,
+        "n_out": n_out
+    }
+    json_structure["data"].append(new_entry)
 
 def determine_roi(x1, y1, x2, y2, im0) :
     y_middle = ((y2 - y1) / 2) + y1
@@ -42,7 +64,7 @@ def determine_roi(x1, y1, x2, y2, im0) :
     else :
         return None
 
-def people_counting(img, bbox, in_counter, out_counter, current_counter, identities=None, categories=None, names=None, save_with_object_id=False, path=None, detected_object=None, frame_rate = None, current_frame = None):
+def people_counting(img, bbox, in_counter, out_counter, current_counter, identities=None,  detected_object=None, frame_rate = None, current_frame = None):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         # Check if the center of the box is within any of the ROIs
@@ -166,28 +188,30 @@ def detect(save_img=False):
         model.half()  # to FP16
 
     # Set MySQL Database
-    mydb = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        passwd="kh670205"
-    )
+    # mydb = mysql.connector.connect(
+    #     host="localhost",
+    #     user="root",
+    #     passwd="kh670205"
+    # )
 
-    mycursor = mydb.cursor()
+    # mycursor = mydb.cursor()
 
 
-    mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
-    mycursor.execute("USE testdb")
+    # mycursor.execute("CREATE DATABASE IF NOT EXISTS testdb")
+    # mycursor.execute("USE testdb")
 
-    mycursor.execute("""
-        CREATE TABLE IF NOT EXISTS detectionData (
-            detection_id INT,
-            room_id INTEGER,
-            timestamp VARCHAR(255),
-            n_in INTEGER,
-            n_out INTEGER,
-            n_current INTEGER
-        )
-    """)
+    # mycursor.execute("""
+    #     CREATE TABLE IF NOT EXISTS detectionData (
+    #         detection_id INT,
+    #         room_id INTEGER,
+    #         timestamp VARCHAR(255),
+    #         n_in INTEGER,
+    #         n_out INTEGER,
+    #         n_current INTEGER
+    #     )
+    # """)
+
+    json_structure = create_initial_json(source)
 
     # Set Dataloader
     vid_path, vid_writer = None, None
@@ -210,7 +234,8 @@ def detect(save_img=False):
 
     # Initialize Value
     detected_objects = []
-    room_id = opt.room_ID
+    location_id = opt.location_ID
+    location_name = opt.location_name
     prev_counter = 0 
     in_counter = 0
     out_counter = 0
@@ -305,45 +330,64 @@ def detect(save_img=False):
                     identities = tracked_dets[:, 8]
                     categories = tracked_dets[:, 4]
 
-                    for i, box in enumerate(bbox_xyxy):
+                    # for i, box in enumerate(bbox_xyxy):
         
-                        query = """
-                            SELECT detection_id, n_in, n_out, n_current 
-                            FROM detectionData 
-                            WHERE room_id = %s 
-                            ORDER BY detection_id DESC 
-                            LIMIT 1
-                        """
-                        # Execute the query
-                        mycursor.execute(query, (room_id,))
+                    #     query = """
+                    #         SELECT detection_id, n_in, n_out, n_current 
+                    #         FROM detectionData 
+                    #         WHERE room_id = %s 
+                    #         ORDER BY detection_id DESC 
+                    #         LIMIT 1
+                    #     """
+                    #     # Execute the query
+                    #     mycursor.execute(query, (room_id,))
 
-                        # Fetch the result
-                        result = mycursor.fetchone()
+                    #     # Fetch the result
+                    #     result = mycursor.fetchone()
 
-                        # Initialize the counters with the values from the database
-                        if result:
-                            det_id, in_counter, out_counter, current_counter = result
-                            det_id += 1
+                    #     # Initialize the counters with the values from the database
+                    #     if result:
+                    #         det_id, in_counter, out_counter, current_counter = result
+                    #         det_id += 1
 
-                        img, in_counter, out_counter, current_counter = people_counting(im0, bbox_xyxy, in_counter, out_counter, current_counter, identities, categories, names, save_with_object_id, txt_path, detected_objects, 60, frame)
+                    img, in_counter, out_counter, current_counter = people_counting(im0, bbox_xyxy, in_counter, out_counter, current_counter, identities,  detected_objects, 60, frame)
+                    date = datetime.now()
 
-                        # Insert into Database
-                        if prev_counter != current_counter :
-                            if current_counter < 0:
-                                current_counter_db = 0
-                            else:
-                                current_counter_db = current_counter
+                    if prev_counter != current_counter :
+                        det_id, current_counter = det_id, current_counter
 
-                            sql = "INSERT INTO detectionData (detection_id, room_id, timestamp, n_in, n_out, n_current) VALUES (%s, %s, %s, %s, %s, %s)"
-                            date = datetime.now()
+
+                        date_json = date.strftime('%Y-%m-%d %H:%M:%S'),
+                        add_data(json_structure, det_id, location_id, location_name, date_json, in_counter, out_counter)
+                        file_name = f"output_{det_id}.json"
+                        file_path = 'outputs/TJ/' + file_name
+                        
+                        with open(file_path, 'w') as json_file:
+                            json.dump(json_structure, json_file, indent = 4)
+
+
+
+
+                        # # Insert into Database
+                        # if prev_counter != current_counter :
+                        #     if current_counter < 0:
+                        #         current_counter_db = 0
+                        #     else:
+                        #         current_counter_db = current_counter
+
+                        #     sql = "INSERT INTO detectionData (detection_id, room_id, timestamp, n_in, n_out, n_current) VALUES (%s, %s, %s, %s, %s, %s)"
+                        #     date = datetime.now()
 
                             
-                            val = (det_id, room_id, date, in_counter, out_counter, current_counter_db)
+                        #     val = (det_id, room_id, date, in_counter, out_counter, current_counter_db)
 
-                            # Execute the query
-                            mycursor.execute(sql, val)
-                            mydb.commit()
-                            prev_counter = current_counter
+                        #     # Execute the query
+                        #     mycursor.execute(sql, val)
+                        #     mydb.commit()
+                        #     prev_counter = current_counter
+
+                        prev_counter = current_counter
+
 
 
             else: #SORT should be updated even with no detections
@@ -368,7 +412,7 @@ def detect(save_img=False):
             # cv2.rectangle(im0, (0,0), (int(im0.shape[0]*0.56),int(im0.shape[0]*0.05)), (255,255,255), -1)
             cv2.putText(im0, text1, (0,int(im0.shape[0]*0.06)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             cv2.putText(im0, text2, (0,int(im0.shape[0]*0.06+offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
-            cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
+            # cv2.putText(im0, text3, (0,int(im0.shape[0]*0.06+2*offset_y)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, "LoS : " + level_of_service, (0,int(im0.shape[0]*0.06)+offset_y), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)    
             # cv2.putText(im0, dt_string1, (600,int(im0.shape[0]*0.04)), cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 0, 255) , text_bold, cv2.LINE_AA)
         
@@ -439,7 +483,10 @@ if __name__ == '__main__':
     parser.add_argument('--save-bbox-dim', action='store_true', help='save bounding box dimensions with --save-txt tracks')
     parser.add_argument('--save-with-object-id', action='store_true', help='save results with object id to *.txt')
 
-    parser.add_argument('--room-ID', type=int, default=0, help='detected room id')
+
+    parser.add_argument('--location-ID', type=int, default=1, help='detected room id')
+    parser.add_argument('--location-name', type=str, default="a location", help='location name for detection')
+    
     opt = parser.parse_args()
     print(opt)
     #check_requirements(exclude=('pycocotools', 'thop'))
